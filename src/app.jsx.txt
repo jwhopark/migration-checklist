@@ -1,0 +1,344 @@
+import { useState, useRef, useCallback } from "react";
+
+const SHEETS_URL = "https://script.google.com/a/macros/gmcblueservice.com/s/AKfycbyALLc1yG6fXMH7LnWupUhSsRdUpV-5zYXKdZu51WT-n0RBXUGNjcWnAOwX_YqiVzYl/exec";
+const JP_EMAIL = "jp@gmcblueservice.com";
+
+const T = {
+  en: {
+    company: "GMC Blue Service",
+    title: "Google Workspace Migration Checklist",
+    subtitle: "Complete all sections and submit by",
+    deadline: "Thursday EOD",
+    warning: "This migration won't be fully automatic due to backend issues. It's your responsibility to account for everything you need. If it's not in this checklist or backed up separately, it could be lost.",
+    emailBanner: "New Email Format: firstname.lastname@gmcblueservice.com — Your old address will keep working as an alias.",
+    sectionOf: "Section {0} of {1}",
+    back: "← Back",
+    next: "Next →",
+    submit: "✓ Submit Checklist",
+    submitting: "Submitting...",
+    complete: "Checklist Submitted!",
+    completeDesc: "Your responses have been recorded and a copy is being emailed to JP. Thank you!",
+    downloadBtn: "💾 Download a copy for yourself",
+    goBack: "← Go back and edit",
+    required: "Please fill in required fields:",
+    generated: "Submitted",
+    none: "(not answered)",
+    langToggle: "한국어",
+    errorTitle: "Submission issue",
+    errorSheets: "There was an issue sending to our system, but don't worry. Please use the button below to download your responses and email them to JP directly.",
+    emailBackup: "✉️ Email responses to JP",
+    reminders: [
+      "Do NOT delete, reorganize, or archive anything right now.",
+      "Do NOT change any passwords between now and Friday.",
+      "DO back up critical files to a USB drive or personal cloud before Friday.",
+      "DO save anything important from Teams chats and channels before Friday.",
+    ],
+  },
+  ko: {
+    company: "GMC Blue Service",
+    title: "Google Workspace 마이그레이션 체크리스트",
+    subtitle: "모든 섹션을 완료하고 제출해 주세요. 마감:",
+    deadline: "목요일 퇴근 전",
+    warning: "현재 백엔드 문제로 인해 자동 이전이 완벽하지 않습니다. 본인이 필요한 데이터는 본인이 직접 확인하고 챙겨야 합니다. 이 체크리스트에 기재하지 않거나 별도로 백업해 두지 않은 데이터는 유실될 수 있습니다.",
+    emailBanner: "새 이메일 형식: 성.이름@gmcblueservice.com — 기존 주소는 별칭(alias)으로 계속 사용 가능합니다.",
+    sectionOf: "섹션 {0} / {1}",
+    back: "← 이전",
+    next: "다음 →",
+    submit: "✓ 체크리스트 제출",
+    submitting: "제출 중...",
+    complete: "체크리스트 제출 완료!",
+    completeDesc: "응답이 기록되었으며 JP에게 사본이 이메일로 전송됩니다. 감사합니다!",
+    downloadBtn: "💾 본인용 사본 다운로드",
+    goBack: "← 돌아가서 수정",
+    required: "필수 항목을 입력해 주세요:",
+    generated: "제출일시",
+    none: "(미응답)",
+    langToggle: "English",
+    errorTitle: "제출 오류",
+    errorSheets: "시스템 전송에 문제가 있었습니다. 걱정하지 마세요. 아래 버튼으로 응답을 다운로드하고 JP에게 직접 이메일로 보내주세요.",
+    emailBackup: "✉️ JP에게 이메일로 전송",
+    reminders: [
+      "지금은 아무것도 삭제, 정리, 보관하지 마세요.",
+      "금요일 전까지 비밀번호를 변경하지 마세요.",
+      "중요한 파일은 반드시 USB 드라이브나 개인 클라우드에 백업해 두세요.",
+      "Teams 채팅과 채널에서 중요한 내용은 금요일 전에 저장해 주세요.",
+    ],
+  },
+};
+
+const mkSec = (l) => {
+  const e = l === "en";
+  return [
+    { id: "info", title: e ? "Basic Info" : "기본 정보", icon: "👤", fields: [
+      { id: "name", label: e ? "Your Name" : "이름", type: "text", required: true },
+      { id: "role", label: e ? "Position / Role" : "직책 / 역할", type: "text", required: true },
+      { id: "newEmail", label: e ? "Your new email (firstname.lastname@gmcblueservice.com)" : "새 이메일 (성.이름@gmcblueservice.com)", type: "text", placeholder: "e.g. jung.park@gmcblueservice.com", required: true },
+      { id: "currentEmail", label: e ? "Your current email address (will become your alias)" : "현재 이메일 주소 (별칭으로 유지됩니다)", type: "text", placeholder: "e.g. jp@gmcblueservice.com" },
+    ]},
+    { id: "email", title: e ? "1. Email" : "1. 이메일", icon: "📧", fields: [
+      { id: "mailboxSize", label: e ? "Roughly how full is your mailbox?" : "메일함 용량이 대략 어느 정도인가요?", type: "radio", options: e ? ["Small","Medium","Thousands of emails"] : ["적음","보통","수천 통 이상"] },
+      { id: "outlookFolders", label: e ? "Do you have folders set up in Outlook you rely on? List them." : "Outlook에 설정해 둔 폴더가 있나요? 목록을 적어주세요.", type: "textarea", placeholder: e ? "List folders or 'None'" : "폴더 목록 또는 '없음'" },
+      { id: "emailRules", label: e ? "Any email rules or auto-forwards set up?" : "이메일 자동 분류 규칙이나 전달 설정이 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+      { id: "criticalEmails", label: e ? "Important emails or threads you cannot afford to lose?" : "절대 잃어버리면 안 되는 중요한 이메일이 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+      { id: "sharedMailboxes", label: e ? "Do you use any shared/group mailboxes?" : "공유/그룹 메일함을 사용하나요?", type: "textarea", placeholder: "e.g. info@, estimating@, accounting@" },
+    ]},
+    { id: "contacts", title: e ? "2. Contacts" : "2. 연락처", icon: "📇", fields: [
+      { id: "outlookContacts", label: e ? "Work contacts saved in Outlook?" : "Outlook에 업무 연락처를 저장해 두었나요?", type: "radio", options: e ? ["Yes","No"] : ["예","아니오"] },
+      { id: "phoneContacts", label: e ? "Work contacts in your phone or personal account too?" : "휴대폰이나 개인 계정에도 업무 연락처가 있나요?", type: "radio", options: e ? ["Yes","No"] : ["예","아니오"] },
+      { id: "sharedContacts", label: e ? "Shared contact lists with other team members?" : "다른 팀원과 공유하는 연락처 목록이 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+      { id: "uniqueContacts", label: e ? "Contacts that only YOU have? (not saved elsewhere)" : "본인만 가지고 있는 연락처가 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+    ]},
+    { id: "calendar", title: e ? "3. Calendar" : "3. 캘린더", icon: "📅", fields: [
+      { id: "usesCalendar", label: e ? "Do you use Outlook calendar?" : "Outlook 캘린더를 사용하나요?", type: "radio", options: e ? ["Yes","No"] : ["예","아니오"] },
+      { id: "recurringEvents", label: e ? "Recurring events that need to carry over?" : "이전해야 하는 반복 일정이 있나요?", type: "textarea", placeholder: e ? "e.g. inspections, meetings" : "예: 검사, 회의, 마감일" },
+      { id: "externalInvites", label: e ? "Active calendar invites from outside the company?" : "외부 업체의 유효한 캘린더 초대가 있나요?", type: "radio", options: e ? ["Yes","No","Not sure"] : ["예","아니오","잘 모르겠음"] },
+      { id: "sharedCalendars", label: e ? "Do you use shared calendars or room booking?" : "공유 캘린더나 회의실 예약을 사용하나요?", type: "radio", options: e ? ["Yes","No"] : ["예","아니오"] },
+    ]},
+    { id: "files", title: e ? "4. Files & Documents" : "4. 파일 및 문서", icon: "📁", fields: [
+      { id: "localFiles", label: e ? "Work files saved on your computer?" : "컴퓨터에 저장된 업무 파일이 있나요?", type: "check", options: e ? ["Estimates","Contracts","Plans/Drawings","Photos","Specs","Submittals","RFIs","Change Orders","Safety Docs","Other"] : ["견적서","계약서","도면","사진","시방서","제출물","RFI","변경주문서","안전 문서","기타"] },
+      { id: "localFilesOther", label: e ? "If 'Other', describe:" : "'기타'인 경우 설명:", type: "text" },
+      { id: "onedrive", label: e ? "Anything in OneDrive or SharePoint?" : "OneDrive나 SharePoint에 파일이 있나요?", type: "radio", options: e ? ["Yes","No","Not sure"] : ["예","아니오","잘 모르겠음"] },
+      { id: "usbDrives", label: e ? "USB drives or external hard drives for work?" : "USB나 외장 하드에 업무 파일이 있나요?", type: "radio", options: e ? ["Yes","No"] : ["예","아니오"] },
+      { id: "personalCloud", label: e ? "Work files in personal Google Drive, Dropbox, etc.?" : "개인 클라우드에 업무 파일이 있나요?", type: "radio", options: e ? ["Yes","No"] : ["예","아니오"] },
+      { id: "attachmentOnly", label: e ? "Files that only exist as email attachments?" : "이메일 첨부파일로만 존재하는 파일이 있나요?", type: "radio", options: e ? ["Yes","No","Not sure"] : ["예","아니오","잘 모르겠음"] },
+    ]},
+    { id: "teams", title: e ? "5. Teams & Group Chats" : "5. Teams 및 그룹 채팅", icon: "💬", fields: [
+      { id: "teamsChannels", label: e ? "List every Teams channel you're in:" : "참여 중인 Teams 채널을 모두 나열:", type: "textarea", placeholder: e ? "One per line" : "각 채널을 줄바꿈하여 작성", required: true },
+      { id: "groupChats", label: e ? "Active group chats and who's in them:" : "활발한 그룹 채팅과 참여자:", type: "textarea", placeholder: e ? "e.g. 'Field Crew - Mike, Sarah'" : "예: '현장팀 - 김철수, 이영희'" },
+      { id: "teamsFiles", label: e ? "Important messages, files, or links in Teams to save?" : "Teams에서 저장해야 하는 중요한 내용이 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+      { id: "teamsExternalCalls", label: e ? "Use Teams for calls with anyone outside the company?" : "Teams로 외부 통화를 하나요?", type: "radio", options: e ? ["Yes","No"] : ["예","아니오"] },
+    ]},
+    { id: "apps", title: e ? "6. Apps & Logins" : "6. 앱 및 로그인", icon: "🔑", fields: [
+      { id: "appsList", label: e ? "Apps/portals you log into with your work email:" : "회사 이메일로 로그인하는 앱/포털:", type: "check", options: ["Procore","Buildertrend","DocuSign","QuickBooks","PlanGrid","Bluebeam",e?"Permit Portals":"허가 포털",e?"Supplier Accounts":"공급업체",e?"Insurance Portals":"보험 포털",e?"Bank Accounts":"은행",e?"Equipment Rental":"장비 임대","AIA Billing",e?"Plan Rooms":"도면실",e?"Building Dept":"건축허가 포털",e?"Other":"기타"] },
+      { id: "appsOther", label: e ? "Other apps not listed:" : "위에 없는 추가 앱:", type: "textarea" },
+      { id: "microsoftSignIn", label: e ? "Any of those use 'Sign in with Microsoft'? Which?" : "'Microsoft로 로그인' 사용하는 것이 있나요?", type: "textarea", placeholder: e ? "List or 'None'" : "나열 또는 '없음'" },
+      { id: "phoneApps", label: e ? "Phone apps connected to work email?" : "휴대폰에 연결된 업무 앱이 있나요?", type: "textarea", placeholder: e ? "e.g. email, calendar, Teams" : "예: 이메일, 캘린더, Teams" },
+      { id: "autoReports", label: e ? "Automated reports/notifications to your work email?" : "자동 보고서나 알림을 받고 있나요?", type: "textarea", placeholder: e ? "List or 'None'" : "나열 또는 '없음'" },
+    ]},
+    { id: "workflow", title: e ? "7. Workflow & Info Needs" : "7. 업무 흐름 및 정보", icon: "📊", fields: [
+      { id: "docTypes", label: e ? "Document types you access regularly:" : "정기적으로 접근하는 문서 유형:", type: "check", options: e ? ["Project Plans","Contracts","Submittals","RFIs","Change Orders","Schedules","Budgets","Safety Docs","Inspection Reports","Photos","Vendor Agreements","Insurance Certs","Permits","Punch Lists","Daily Logs","Timesheets","Other"] : ["도면","계약서","제출물","RFI","변경주문서","공정표","예산","안전 문서","검사 보고서","사진","협력업체 계약","보험 증명","허가서","펀치리스트","일일보고서","근무시간표","기타"] },
+      { id: "docTypesOther", label: e ? "If 'Other':" : "'기타' 설명:", type: "text" },
+      { id: "activeProjects", label: e ? "Projects you're currently active on:" : "현재 참여 중인 프로젝트:", type: "textarea", placeholder: e ? "One per line" : "줄바꿈하여 작성", required: true },
+      { id: "pastProjects", label: e ? "Need access to past project files? Which?" : "과거 프로젝트 파일 접근이 필요한가요?", type: "textarea", placeholder: e ? "List or 'None'" : "나열 또는 '없음'" },
+      { id: "shareWith", label: e ? "Who do you share files with most?" : "가장 자주 파일을 공유하는 대상:", type: "check", options: e ? ["Other employees","Subcontractors","Clients","Architects","Engineers","Other"] : ["다른 직원","협력업체","고객","설계사","엔지니어","기타"] },
+      { id: "accessProblems", label: e ? "Trouble finding or accessing any documents?" : "문서 접근에 어려움이 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+    ]},
+    { id: "resp", title: e ? "8. Your Responsibilities" : "8. 담당 업무", icon: "🔧", fields: [
+      { id: "duties", label: e ? "Your main duties:" : "주요 업무:", type: "check", options: e ? ["Field Management","Estimating","Material Procurement","Daily Reports","Sub Management","Client Communication","Safety Management","Permitting","Accounting/Billing","Scheduling","Coordinating Inspections","Project Photos","Other"] : ["현장 관리","견적 작성","자재 발주","일일보고서","하도급 관리","고객 소통","안전 관리","허가 업무","회계/청구","공정 관리","검사 조율","사진 관리","기타"] },
+      { id: "dutiesOther", label: e ? "Additional duties:" : "추가 업무:", type: "textarea" },
+      { id: "dailySystems", label: e ? "Programs/systems you use daily or weekly:" : "매일/매주 사용하는 프로그램:", type: "textarea" },
+      { id: "manualTasks", label: e ? "Manual tasks that would work better digitally?" : "디지털로 전환하면 좋을 수작업이 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+      { id: "bottlenecks", label: e ? "Bottlenecks or inefficiencies in your work?" : "업무 병목이나 비효율이 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+    ]},
+    { id: "setup", title: e ? "9. Your Setup" : "9. 사용 환경", icon: "💻", fields: [
+      { id: "devices", label: e ? "Devices you use for work:" : "업무용 기기:", type: "check", options: e ? ["Company Computer","Personal Computer","Phone","Tablet"] : ["회사 컴퓨터","개인 컴퓨터","휴대폰","태블릿"] },
+      { id: "emailClient", label: e ? "How do you check work email?" : "이메일 확인 방법:", type: "radio", options: e ? ["Outlook App","Web Browser","Phone Mail App","Multiple"] : ["Outlook 앱","웹 브라우저","휴대폰 메일 앱","여러 가지"] },
+      { id: "sharedDevice", label: e ? "Share a computer or email with anyone?" : "컴퓨터나 이메일을 공유하나요?", type: "radio", options: e ? ["Yes","No"] : ["예","아니오"] },
+      { id: "sharedDeviceDetail", label: e ? "If yes, with who?" : "예인 경우 누구와?", type: "text" },
+      { id: "techComfort", label: e ? "Comfort level with new software:" : "새 소프트웨어 적응도:", type: "radio", options: e ? ["Very comfortable","Somewhat","Need help"] : ["매우 익숙","보통","도움 필요"] },
+    ]},
+    { id: "concerns", title: e ? "10. Concerns & Ideas" : "10. 건의 및 우려", icon: "💡", fields: [
+      { id: "worriedAbout", label: e ? "Anything you're worried about losing?" : "잃어버릴까 걱정되는 것이 있나요?", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+      { id: "fixThis", label: e ? "Anything broken you'd like fixed in the new system?" : "새 시스템에서 개선되었으면 하는 것:", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+      { id: "wishList", label: e ? "Tools or features you wish we had?" : "회사에 있었으면 하는 도구/기능:", type: "textarea", placeholder: e ? "Describe or 'None'" : "설명 또는 '없음'" },
+    ]},
+  ];
+};
+
+const Rad = ({ options, value, onChange }) => (
+  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+    {options.map(o => (
+      <button key={o} type="button" onClick={() => onChange(value === o ? "" : o)}
+        style={{ padding: "8px 16px", borderRadius: 8, border: value === o ? "2px solid #2563eb" : "1px solid #d1d5db", background: value === o ? "#eff6ff" : "#fff", color: value === o ? "#1d4ed8" : "#374151", fontWeight: value === o ? 600 : 400, cursor: "pointer", fontSize: 14 }}>
+        {o}
+      </button>
+    ))}
+  </div>
+);
+
+const Chk = ({ options, value = [], onChange }) => (
+  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+    {options.map(o => {
+      const c = value.includes(o);
+      return (
+        <button key={o} type="button" onClick={() => onChange(c ? value.filter(v => v !== o) : [...value, o])}
+          style={{ padding: "8px 16px", borderRadius: 8, border: c ? "2px solid #2563eb" : "1px solid #d1d5db", background: c ? "#eff6ff" : "#fff", color: c ? "#1d4ed8" : "#374151", fontWeight: c ? 600 : 400, cursor: "pointer", fontSize: 14 }}>
+          {c ? "✓ " : ""}{o}
+        </button>
+      );
+    })}
+  </div>
+);
+
+export default function App() {
+  const [lang, setLang] = useState("en");
+  const [fd, setFd] = useState({});
+  const [cur, setCur] = useState(0);
+  const [status, setStatus] = useState("form");
+  const topRef = useRef(null);
+  const t = T[lang];
+  const secs = mkSec(lang);
+  const sec = secs[cur];
+  const pct = Math.round(((cur + 1) / secs.length) * 100);
+
+  const up = (id, v) => setFd(p => ({ ...p, [id]: v }));
+  const scroll = () => setTimeout(() => topRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+  const go = i => { setCur(i); scroll(); };
+  const done = s => s.fields.some(f => { const v = fd[f.id]; return v && (Array.isArray(v) ? v.length > 0 : String(v).trim() !== ""); });
+
+  const genText = useCallback(() => {
+    const ss = mkSec(lang);
+    let o = `=== GMC BLUE SERVICE - MIGRATION CHECKLIST ===\n${t.generated}: ${new Date().toLocaleString()}\n\n`;
+    ss.forEach(s => { o += `--- ${s.title} ---\n`; s.fields.forEach(f => { const v = fd[f.id]; const val = v && (Array.isArray(v) ? v.length > 0 : String(v).trim()) ? (Array.isArray(v) ? v.join(", ") : v) : t.none; o += `${f.label}\n→ ${val}\n\n`; }); o += "\n"; });
+    return o;
+  }, [fd, lang, t]);
+
+  const genFlat = useCallback(() => {
+    const ss = mkSec(lang);
+    const flat = { _submitted: new Date().toISOString(), _lang: lang };
+    ss.forEach(s => s.fields.forEach(f => { const v = fd[f.id]; flat[f.id] = Array.isArray(v) ? v.join(", ") : (v || ""); }));
+    return flat;
+  }, [fd, lang]);
+
+  const sendEmail = useCallback(() => {
+    const nm = fd.name || "Employee";
+    const subj = encodeURIComponent(`Migration Checklist - ${nm}`);
+    const body = encodeURIComponent(genText());
+    window.open(`mailto:${JP_EMAIL}?subject=${subj}&body=${body}`, "_self");
+  }, [fd, genText]);
+
+  const handleSubmit = async () => {
+    const req = secs.flatMap(s => s.fields.filter(f => f.required));
+    const miss = req.filter(f => { const v = fd[f.id]; return !v || (typeof v === "string" && !v.trim()); });
+    if (miss.length > 0) { alert(`${t.required}\n\n${miss.map(f => `• ${f.label}`).join("\n")}`); return; }
+    setStatus("submitting"); scroll();
+    let sheetsOk = false;
+    try {
+      await fetch(SHEETS_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" }, body: JSON.stringify(genFlat()) });
+      sheetsOk = true;
+    } catch (e) { console.error("Sheets error:", e); }
+    setTimeout(() => sendEmail(), 500);
+    setStatus(sheetsOk ? "done" : "error");
+  };
+
+  const download = () => {
+    const nm = fd.name || "employee";
+    const b = new Blob([genText()], { type: "text/plain" });
+    const u = URL.createObjectURL(b);
+    const a = document.createElement("a"); a.href = u; a.download = `migration-checklist-${nm.toLowerCase().replace(/\s+/g, "-")}.txt`; a.click(); URL.revokeObjectURL(u);
+  };
+
+  const bx = { background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", padding: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" };
+  const bt = (bg, clr, brd) => ({ padding: "12px 24px", borderRadius: 10, border: brd || "none", background: bg, color: clr, fontWeight: 600, cursor: "pointer", fontSize: 15 });
+
+  if (status === "done" || status === "error") {
+    return (
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+        <div ref={topRef} />
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+          <button onClick={() => setLang(lang === "en" ? "ko" : "en")} style={{ ...bt("#f3f4f6","#374151","1px solid #d1d5db"), padding: "8px 16px", fontSize: 13 }}>{t.langToggle}</button>
+        </div>
+        {status === "done" ? (
+          <div style={{ textAlign: "center", padding: "40px 24px", background: "#f0fdf4", borderRadius: 16, border: "1px solid #bbf7d0" }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: "#166534", margin: "0 0 8px" }}>{t.complete}</h2>
+            <p style={{ color: "#4b5563", margin: "0 0 24px", lineHeight: 1.5 }}>{t.completeDesc}</p>
+            <button onClick={download} style={bt("#fff","#2563eb","2px solid #2563eb")}>{t.downloadBtn}</button>
+            <br /><button onClick={() => { setStatus("form"); scroll(); }} style={{ marginTop: 16, background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 14 }}>{t.goBack}</button>
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "40px 24px", background: "#fef3c7", borderRadius: 16, border: "1px solid #fcd34d" }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: "#92400e", margin: "0 0 8px" }}>{t.errorTitle}</h2>
+            <p style={{ color: "#78350f", margin: "0 0 24px", lineHeight: 1.5, fontSize: 14 }}>{t.errorSheets}</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <button onClick={download} style={bt("#fff","#2563eb","2px solid #2563eb")}>{t.downloadBtn}</button>
+              <button onClick={sendEmail} style={bt("#16a34a","#fff")}>{t.emailBackup}</button>
+            </div>
+            <br /><button onClick={() => { setStatus("form"); scroll(); }} style={{ marginTop: 8, background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 14 }}>{t.goBack}</button>
+          </div>
+        )}
+        <div style={{ ...bx, marginTop: 24 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#dc2626", margin: "0 0 12px" }}>⚠️ {lang === "en" ? "Important Reminders Before Friday" : "금요일 전 중요 안내사항"}</h3>
+          {t.reminders.map((r, i) => (<div key={i} style={{ fontSize: 13, color: "#374151", padding: "6px 0", lineHeight: 1.5 }}>• {r}</div>))}
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "submitting") {
+    return (
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+        <div ref={topRef} />
+        <div style={{ textAlign: "center", padding: "60px 24px" }}>
+          <div style={{ fontSize: 40, marginBottom: 16, animation: "spin 1s linear infinite" }}>⏳</div>
+          <h2 style={{ fontSize: 20, fontWeight: 600, color: "#374151" }}>{t.submitting}</h2>
+          <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto", padding: "16px 16px 120px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+      <div ref={topRef} />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <button onClick={() => setLang(lang === "en" ? "ko" : "en")} style={{ ...bt("#f3f4f6","#374151","1px solid #d1d5db"), padding: "8px 16px", fontSize: 13 }}>{t.langToggle}</button>
+      </div>
+      <div style={{ textAlign: "center", marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#2563eb", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>{t.company}</div>
+        <h1 style={{ fontSize: 21, fontWeight: 700, color: "#111827", margin: "0 0 8px" }}>{t.title}</h1>
+        <p style={{ fontSize: 14, color: "#6b7280", margin: 0 }}>{t.subtitle} <strong>{t.deadline}</strong></p>
+      </div>
+      <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 12, padding: 14, marginBottom: 12, fontSize: 13, color: "#92400e", lineHeight: 1.5 }}>
+        <strong>⚠️</strong> {t.warning}
+      </div>
+      <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: 14, marginBottom: 20, fontSize: 13, color: "#1e40af", lineHeight: 1.5 }}>
+        <strong>📧</strong> {t.emailBanner}
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>{t.sectionOf.replace("{0}", cur + 1).replace("{1}", secs.length)}</div>
+        <div style={{ height: 6, background: "#e5e7eb", borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: "#2563eb", borderRadius: 3, transition: "width 0.3s" }} />
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 4, justifyContent: "center", marginBottom: 20, flexWrap: "wrap" }}>
+        {secs.map((s, i) => (
+          <button key={s.id} onClick={() => go(i)} title={s.title}
+            style={{ width: 32, height: 32, borderRadius: 8, border: i === cur ? "2px solid #2563eb" : "1px solid #d1d5db", background: i === cur ? "#eff6ff" : done(s) ? "#f0fdf4" : "#fff", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {s.icon}
+          </button>
+        ))}
+      </div>
+      <div style={bx}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: "0 0 20px", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>{sec.icon}</span> {sec.title}
+        </h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {sec.fields.map(f => (
+            <div key={f.id}>
+              <label style={{ display: "block", fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 8, lineHeight: 1.4 }}>
+                {f.label}{f.required && <span style={{ color: "#dc2626", marginLeft: 4 }}>*</span>}
+              </label>
+              {f.type === "text" && <input type="text" value={fd[f.id] || ""} onChange={e => up(f.id, e.target.value)} placeholder={f.placeholder || ""} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, boxSizing: "border-box", outline: "none" }} />}
+              {f.type === "textarea" && <textarea value={fd[f.id] || ""} onChange={e => up(f.id, e.target.value)} placeholder={f.placeholder || ""} rows={3} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, boxSizing: "border-box", resize: "vertical", outline: "none", fontFamily: "inherit" }} />}
+              {f.type === "radio" && <Rad options={f.options} value={fd[f.id] || ""} onChange={v => up(f.id, v)} />}
+              {f.type === "check" && <Chk options={f.options} value={fd[f.id] || []} onChange={v => up(f.id, v)} />}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, gap: 12 }}>
+        <button onClick={() => { setCur(p => p - 1); scroll(); }} disabled={cur === 0}
+          style={{ ...bt(cur === 0 ? "#f3f4f6" : "#fff", cur === 0 ? "#9ca3af" : "#374151", "1px solid #d1d5db"), cursor: cur === 0 ? "default" : "pointer" }}>
+          {t.back}
+        </button>
+        {cur < secs.length - 1 ? (
+          <button onClick={() => { setCur(p => p + 1); scroll(); }} style={bt("#2563eb","#fff")}>{t.next}</button>
+        ) : (
+          <button onClick={handleSubmit} style={bt("#16a34a","#fff")}>{t.submit}</button>
+        )}
+      </div>
+    </div>
+  );
+}
